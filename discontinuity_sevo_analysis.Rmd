@@ -1,0 +1,222 @@
+---
+title: "Report of Weights for Simone, Gagne, and Raisin"
+author: "Jerry Chao (jyc2171)"
+date: "October 24, 2020"
+output: github_document
+---
+
+```{r setup, echo = FALSE}
+library(tidyverse)
+library(readxl)
+library(ggridges)
+library(patchwork)
+
+wordcountaddin::word_count("p8105_mtp_jyc2171.Rmd")
+wordcountaddin:::text_stats()
+
+knitr::opts_chunk$set(
+  fig.width = 6,
+  fig.asp = .6,
+  out.width = "90%"
+)
+
+theme_set(theme_minimal() + theme(legend.position = "bottom"))
+
+options(
+  ggplot2.continuous.colour = "viridis",
+  ggplot2.continuous.fill = "viridis"
+)
+
+scale_colour_discrete = scale_color_viridis_d
+scale_fill_discrete = scale_fill_viridis_d
+```
+
+Problem 1 - Data.
+
+This is a one sheet excel file consisting of 6 columns of data: dates (with inconsistent formatting), names (Raisin, Simone, and Gagne) containing weight data in pounds and ounces (with occasional missing data), standard weight (with sparse data), and text notes.   After importing, cleaning, and tidying the data,  the goals of this report are to provide a summary of weights for Raisin, Simone, and Gagne.  In addition, I will visualize the data using ggplot, perform exploratory data analyses, and determine if any trends are present in the data.
+
+The major steps in data cleaning were: (1) converting dates in days to dates in "year-month-day" format, (2) converting weights to pounds only, and (3) tidying the data.  Using the "as.Date" function, I designated the origin date as 1899-12-30, which converted days to "year-month-day" format.  For each dog's weight data, I separated pounds from ounces, converted ounces to pounds, and summed these to create a single weight in pounds only.  Finally, I tidied the data by converting from wide to long format.
+
+```{r import, clean, and tidy}
+dogs_df = 
+  read_excel("./data/dogweights_07sept2020.xlsx", range = "B2:F207") %>% 
+  janitor::clean_names() %>% 
+  mutate(
+    date = as.numeric(date),
+    date = as.Date(date, origin = "1899-12-30")
+  ) %>% 
+  separate(raisin, c("raisin_pounds", "raisin_ounces")) %>% 
+  separate(simone, c("simone_pounds", "simone_ounces")) %>% 
+  separate(gagne, c("gagne_pounds", "gagne_ounces")) %>%
+  separate(std, c("std_pounds", "std_ounces")) %>% 
+  mutate(
+    raisin_pounds = as.numeric(raisin_pounds),
+    raisin_ounces = as.numeric(raisin_ounces),
+    simone_pounds = as.numeric(simone_pounds),
+    simone_ounces = as.numeric(simone_ounces),
+    gagne_pounds = as.numeric(gagne_pounds),
+    gagne_ounces = as.numeric(gagne_ounces),
+    std_pounds = as.numeric(std_pounds),
+    std_ounces = as.numeric(std_ounces),
+    raisin = raisin_pounds + raisin_ounces / 16,
+    simone = simone_pounds + simone_ounces / 16,
+    gagne = gagne_pounds + gagne_ounces / 16,
+    std = gagne_pounds + std_ounces / 16
+  ) %>% 
+  select(date, raisin, simone, gagne, std) %>% 
+  pivot_longer(
+    raisin:gagne,
+    names_to = "dog",
+    values_to = "weight"
+  ) %>% 
+  relocate(date, dog, weight)
+
+dogs_df
+```
+
+```{r notes dataframe}
+notes_df = read_excel("./data/dogweights_07sept2020.xlsx", range = "B2:G207") %>% 
+  rename(notes = ...6) %>% 
+  janitor::clean_names() %>% 
+  select(-raisin, -simone, -gagne, -std) %>% 
+  mutate(
+    date = as.numeric(date),
+    date = as.Date(date, origin = "1899-12-30")
+  ) %>% 
+  filter(notes != "NA")
+
+notes_df
+```
+
+```{r export dataframes}
+write_csv(dogs_df, path = "data/dogs_df.csv")
+write_csv(notes_df, path = "data/notes_df.csv")
+```
+
+Problem 2 - EDA.
+
+The tidy dataset contains `r dogs_df %>% nrow()` rows and `r dogs_df %>%  ncol()` columns corresponding to date, dog (raisin, simone, or gagne), weight (pounds), and standard weight (pounds).  The are `r dogs_df %>% summarize(n_distinct(date))` unique dates.  Of note, one date was entered as "s" and missing, but R Studio still counts that as a distinct date.
+
+```{r table}
+dogs_df %>%
+  filter(weight != "NA") %>% 
+  group_by(dog) %>%
+  summarize(
+    n_obs = n(),
+    mean_weight = mean(weight),
+    sd_weight = sd(weight),
+    ) %>% 
+  knitr::kable()
+```
+
+Problem 3 - Visualization.
+
+I have created a two-panel plot showing the distribution of weights for each dog (left panel) and each dog’s weight over time (right panel).
+
+```{r left panel exploratory, eval = FALSE}
+#These are my exploratory ggplots.  I have not run the output but wanted to show my code.
+
+dogs_df %>% 
+  ggplot(aes(x = weight, y = dog, color = dog)) +
+  geom_point()
+
+dogs_df %>% 
+  filter(dog == "raisin") %>% 
+  ggplot(aes(x = weight)) +
+  geom_histogram()
+
+dogs_df %>% 
+  filter(dog == "simone") %>% 
+  ggplot(aes(x = weight)) +
+  geom_histogram()
+
+dogs_df %>% 
+  filter(dog == "gagne") %>% 
+  ggplot(aes(x = weight)) +
+  geom_histogram()
+
+dogs_df %>% 
+  ggplot(aes(x = weight)) +
+  geom_histogram(position = "dodge") +
+  facet_grid(. ~ dog)
+
+dogs_df %>% 
+  ggplot(aes(x = weight, y = dog, fill = dog)) +
+  geom_density_ridges(scale = .85) +
+  labs(
+    title = "Distribution of Weights by Dog",
+    x = "Weight (Lbs)",
+    y = "Dog"
+  ) +
+  viridis::scale_color_viridis(discrete = TRUE) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+dogs_df %>% 
+  ggplot(aes(x = weight)) +
+  geom_boxplot() +
+  facet_grid(. ~ dog)
+```
+
+```{r left panel}
+# I have chosen a density plot because I think it does the best job showing the weight distribution of the three dogs side-by-side in one figure.
+
+left_panel =
+  dogs_df %>% 
+  ggplot(aes(x = weight, fill = dog)) +
+  geom_density(alpha = .6) +
+  labs(
+    title = "Density of Weight Distribution",
+    x = "Weight (Lbs)",
+    y = "Density"
+  ) +
+  viridis::scale_color_viridis(discrete = TRUE) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+left_panel
+```
+
+
+```{r right panel}
+#First plot is weight over time with x-axis labels incorporating the text notes.  I studied this to assess for any relationships between events indicated in the text notes and weight change for the dogs.
+
+dogs_df %>% 
+  ggplot(aes(x = date, y = weight, color = dog)) +
+  geom_smooth(se = FALSE) +
+  geom_point(alpha = .5) +
+  scale_x_date(breaks =  as.Date(c("2018-08-27", "2018-11-18", "2019-03-01", "2019-06-01", "2019-09-06",                                               "2019-11-04", "2020-02-03", "2020-03-01", "2020-05-23", "2020-06-23",                                               "2020-08-07", "2020-09-01")),
+               labels = c("at Weber's", "at Weber's", "2019-03-01", "2019-06-01","Gagne died", "vac? kennel?", "at                            kennel?", "2020-03-01", "haircut", "Simone kennel", "Simone kennel", "2020-09-01")) +
+  labs(
+    title = "Weights of Dogs Over Time",
+    x = "Date",
+    y = "Weight (Lbs)"
+  ) +
+  viridis::scale_color_viridis(discrete = TRUE) +
+  theme_minimal() +
+  theme(legend.position = "bottom", axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+
+#This second plot is the one I am using for my right panel because it is more readable.
+
+right_panel =
+dogs_df %>% 
+  ggplot(aes(x = date, y = weight, color = dog)) +
+  geom_smooth(se = FALSE) +
+  geom_point(alpha = .5) +
+  labs(
+    title = "Weights of Dogs Over Time",
+    x = "Date",
+    y = "Weight (Lbs)"
+  ) +
+  viridis::scale_color_viridis(discrete = TRUE) +
+  theme_minimal() +
+  theme(legend.position = "bottom", axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+
+right_panel
+```
+
+```{r joined figure}
+left_panel + right_panel
+```
+
+Gagne and Simone have a similar weight distribution, with a mean weight of about `r dogs_df %>% filter(dog == "gagne") %>% summarize(mean(weight, na.rm = TRUE))` pounds.  Simone's weight is more tightly distributed around the mean compared to Gagne's, who has a left skew reflecting the period of illness and weight loss before he died.  On average, Raisin is about 8 pounds heavier than both Gagne and Simone, with one outlier weight value in August 2019.   Raisin's weight distribution has a right skew, reflecting his (her?) heavier weight in the earliest days of data collection.  Simone was also heavier in the earliest days of the data collection, but not as much as Raisin.  It is unclear if the heavier weights are related to being at the Weber's, which was common early in the period of data collection.  Raisin lost two pounds over the first 6 months of the data collection and did a good job keeping that weight off, with a slight weight gain peaking around the time period of July 2019 when Gagne was sick.  Could this have been related to stress or sadness of Gagne's illness and death?   Simone, however, gained less weight during Gagne's illness, and has generally had the most consistent weight out of the three.  After Gagne's death, both dogs seemed to lose weight after being in the kennel, in particular Simone, especially if without Raisin.  The last two weights are ominously down for both dogs - I hope they are in good health.
